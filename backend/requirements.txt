@@ -1,0 +1,17 @@
+fastapi
+uvicorn[standard]
+sqlmodel
+psycopg2-binary
+pydantic-settings
+python-multipart
+python-jose[cryptography]
+passlib[bcrypt]
+bcrypt==3.2.0
+aiohttp
+python-slugify
+slowapi
+requests
+alembic
+Pillow
+pytest
+httpx

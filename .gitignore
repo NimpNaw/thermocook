@@ -1,0 +1,44 @@
+# Node
+node_modules/
+dist/
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+.venv/
+.ruff_cache/
+
+# Data (Volumes)
+data/recipes/*
+!data/recipes/thermocook
+data/catalog/
+data/thumbs/
+postgres_data/
+backups/
+
+# Coverage & Logs
+.coverage
+htmlcov/
+coverage/
+*.log
+.pytest_cache/
+.runner/
+
+# Playwright E2E
+frontend/test-results/
+frontend/playwright-report/
+frontend/blob-report/
+frontend/tests/e2e/.auth/
+
+# IDE
+.vscode/
+.idea/
+.DS_Store
+.worktrees/
+
+# Fichiers de scraping Cookomix (données locales)
+cookomix_urls.txt
+url_batch_*

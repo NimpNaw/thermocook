@@ -1,0 +1,5 @@
+[lint]
+# F401 = import inutilisé — les migrations Alembic autogénérées incluent
+# toujours `import sqlalchemy as sa` et `import sqlmodel` même quand ils
+# ne sont pas directement référencés dans le corps du fichier.
+extend-per-file-ignores = { "alembic/versions/*.py" = ["F401"] }

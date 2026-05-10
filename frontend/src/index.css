@@ -1,0 +1,66 @@
+@import "tailwindcss";
+
+@font-face {
+  font-family: 'CulinaryIconfont';
+  src: url('/fonts/culinary-iconfont.woff2') format('woff2');
+  font-weight: normal;
+  font-style: normal;
+  font-display: block;
+}
+
+.culinary-icon {
+  font-family: 'CulinaryIconfont' !important;
+  speak: never;
+  font-style: normal;
+  font-weight: normal;
+  font-variant: normal;
+  text-transform: none;
+  line-height: 1;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  display: inline-block;
+  vertical-align: middle;
+  margin: 0 0.2em;
+  font-size: 1.2em;
+  color: #006d5b; /* Vert Thermomix par défaut */
+}
+
+/* Utilitaires pour les ingrédients */
+.ingredient-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem; /* Réduction drastique de l'espace */
+}
+
+.ingredient-item {
+  background-color: rgba(255, 247, 237, 0.3);
+  padding: 0.5rem 0.75rem; /* Padding réduit */
+  border-radius: 0.75rem;
+  border: 1px solid #ffedd5;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  font-size: 0.875rem;
+}
+
+/* Fixation de la BottomNav et gestion mobile */
+@layer utilities {
+  .pb-safe {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+}
+
+/* Architecture App Shell : scroll interne uniquement */
+html, body {
+  height: 100%;
+  overflow: hidden; /* Désactive le scroll de la fenêtre */
+  position: fixed; /* Empêche le rebond élastique sur iOS */
+  width: 100%;
+}
+
+#root {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  -webkit-overflow-scrolling: touch;
+}
