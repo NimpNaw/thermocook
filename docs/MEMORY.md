@@ -61,6 +61,16 @@ Ce document conserve les décisions techniques complexes, les pièges évités e
     5. **Fix `Query(le=200)`** — le paramètre `lte` de FastAPI n'existe pas ; `le` est le bon.
 - **À retenir** : Un index GIN sur TSVECTOR précalculé est indispensable pour la performance FTS sur +13k recettes. Sans cela, le scoring FTS ne sert qu'au tri sur un scan complet. Toujours vérifier les contraintes FastAPI avec `le`/`ge` et non `lte`/`gte`.
 
+### 🍽️ Schéma Pydantic vs sélection SQL (PREVIEW_COLS) — Phase 23
+- **Problème** : Le champ `portions`, présent en base et bien parsé depuis le Markdown, n'apparaissait nulle part dans l'UI. Deux corrections en cascade ont été nécessaires :
+    1. Le champ n'était pas déclaré dans le schéma de réponse Pydantic `RecipePreview` → FastAPI filtrait silencieusement la valeur (`response_model` n'expose que les champs déclarés).
+    2. Une fois le schéma corrigé, l'API renvoyait `null` sur les routes de liste : la constante `PREVIEW_COLS` (liste de colonnes SELECT optimisée pour les listes) n'incluait pas non plus `Recipe.portions`. Le détail `GET /recipes/{id}` n'était pas concerné car il fait `session.get(Recipe, id)` qui charge toute la ligne.
+- **Solution** :
+    1. Ajout de `portions: Optional[str] = None` dans `RecipePreview` ([PR #88](https://example.com/fabien/thermocook/pulls/88)).
+    2. Ajout de `Recipe.portions` à `PREVIEW_COLS` ([PR #89](https://example.com/fabien/thermocook/pulls/89)).
+    3. **Test d'invariant** `backend/tests/test_preview_cols_invariant.py` : vérifie que **chaque** champ déclaré par `RecipePreview` est effectivement sélectionné par `PREVIEW_COLS`. Détecte automatiquement toute future omission du même type.
+- **À retenir** : Quand une optimisation perf introduit une **liste de colonnes explicites** parallèle au schéma de réponse, le couplage devient fragile : un champ peut être déclaré côté schéma mais oublié côté SQL (ou inversement), et l'API renvoie alors `null` silencieusement même si la donnée existe en base. **Toujours** garder un test d'invariant qui lie les deux. Les mocks de `session.exec(...).all()` qui renvoient des objets `Recipe` complets ne suffisent pas — ils masquent ce genre d'oubli.
+
 ### ⚡ Performance, Unification & App Shell (Phase 19)
 - **Optimisation Recherche** : Passage d'un scan séquentiel (O(n)) à un scan par index (O(log n)) via l'extension **Trigramme (`pg_trgm`)** de PostgreSQL.
 - **Unification SQL** : Suppression de la colonne `ingredients_json` (JSONB) au profit d'une source de vérité unique normalisée dans la table `RecipeIngredient`. Le backend reconstruit dynamiquement le JSON pour le frontend si nécessaire.

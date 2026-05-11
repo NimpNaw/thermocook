@@ -28,8 +28,9 @@ import uvicorn
 
 # Colonnes minimales pour les listes de recettes (optimisation performance)
 PREVIEW_COLS = [
-    Recipe.id, Recipe.title, Recipe.slug, Recipe.folder_name, Recipe.image_main, 
-    Recipe.difficulty, Recipe.total_time, Recipe.dominant_color, Recipe.category
+    Recipe.id, Recipe.title, Recipe.slug, Recipe.folder_name, Recipe.image_main,
+    Recipe.difficulty, Recipe.total_time, Recipe.portions,
+    Recipe.dominant_color, Recipe.category
 ]
 
 limiter = Limiter(key_func=get_remote_address)
