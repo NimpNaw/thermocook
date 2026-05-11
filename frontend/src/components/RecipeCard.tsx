@@ -54,7 +54,7 @@ export const RecipeCard: React.FC<RecipeCardProps> = ({ recipe, isFav, onToggleF
           </div>
         </div>
         <div className="p-4">
-          <h3 className="font-bold text-gray-800 line-clamp-2 min-h-12 leading-tight mb-2 text-sm md:text-base">{recipe.title}</h3>
+          <h3 className="font-bold text-gray-800 line-clamp-2 min-h-[2.5em] leading-tight mb-2 text-sm md:text-base">{recipe.title}</h3>
           <div className="flex items-center gap-4 text-gray-500 text-[10px] md:text-xs">
             <div className="flex items-center gap-1">
               <Clock size={12} />
