@@ -72,9 +72,9 @@ done
 
 
 ### Versionnement de l'Application
-- **Images Docker** : Le pipeline utilise le tag `:latest` pour les images `backend` et `frontend`. 
-- **Déploiement** : Le déploiement automatique sur l'instance de développement (`deploy-dev`) écrase la version précédente avec le dernier build de `main`.
-- **Note** : Ne pas confondre ce versionnement logiciel avec le **versionnement des recettes** (ex: `v1.0.0`), qui est géré comme un catalogue de données indépendant (voir [`docs/spec/RECIPE_PACKAGING.md`](spec/RECIPE_PACKAGING.md)).
+- **CI Gitea (interne)** : le pipeline utilise le tag `:latest` pour les images `backend` et `frontend` poussées sur le registre GHCR. Le déploiement automatique sur l'instance de développement (`deploy-dev`) écrase la version précédente avec le dernier build de `main`.
+- **Publication publique (GitHub + ghcr.io)** : les releases semver `vX.Y.Z` sont poussées manuellement via `./scripts/release-public.sh` (miroir `NimpNaw/thermocook` + images `ghcr.io/nimpnaw/thermocook-{backend,frontend}:vX.Y.Z`). Procédure complète : [`docs/RELEASE.md`](RELEASE.md).
+- **Note** : Ne pas confondre ces versionnements logiciels avec le **versionnement des recettes** (ex: `v1.0.0`), qui est géré comme un catalogue de données indépendant (voir [`docs/spec/RECIPE_PACKAGING.md`](spec/RECIPE_PACKAGING.md)).
 
 ### Jobs du Pipeline
 1.  **backend-test** : Exécute le linting (Ruff) et les tests unitaires (Pytest).

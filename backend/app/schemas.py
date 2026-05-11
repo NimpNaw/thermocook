@@ -39,6 +39,7 @@ class RecipePreview(BaseModel):
     image_main: Optional[str] = None
     difficulty: Optional[str] = None
     total_time: Optional[int] = None
+    portions: Optional[str] = None
     dominant_color: Optional[str] = None
     category: Optional[str] = None
 
