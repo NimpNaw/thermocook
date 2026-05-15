@@ -71,6 +71,14 @@ Ce document conserve les décisions techniques complexes, les pièges évités e
     3. **Test d'invariant** `backend/tests/test_preview_cols_invariant.py` : vérifie que **chaque** champ déclaré par `RecipePreview` est effectivement sélectionné par `PREVIEW_COLS`. Détecte automatiquement toute future omission du même type.
 - **À retenir** : Quand une optimisation perf introduit une **liste de colonnes explicites** parallèle au schéma de réponse, le couplage devient fragile : un champ peut être déclaré côté schéma mais oublié côté SQL (ou inversement), et l'API renvoie alors `null` silencieusement même si la donnée existe en base. **Toujours** garder un test d'invariant qui lie les deux. Les mocks de `session.exec(...).all()` qui renvoient des objets `Recipe` complets ne suffisent pas — ils masquent ce genre d'oubli.
 
+### 🌊 Fluidité du scroll catalogue (mobile Chrome)
+- **Problème** : Saccades brèves perçues lors du scroll de `/recipes` sur Android Chrome, surtout au moment où les thumbs entrent en lazy-load. La grille pousse 200+ cartes en DOM, toutes peintes en permanence et re-rendues à chaque fetch.
+- **Solution** : Trois leviers natifs minimaux (5 lignes au total) :
+    1. `decoding="async"` sur les `<img>` (`RecipeImage.tsx`) — décodage hors main thread.
+    2. `[content-visibility:auto] [contain-intrinsic-size:280px]` sur le wrapper de `RecipeCard` — le navigateur skip le paint/layout des cartes hors viewport.
+    3. `React.memo(RecipeCard)` — props stables (objet `recipe` par référence depuis le cache TQ, callbacks `useCallback` côté `App.tsx`) ⇒ comparaison shallow suffit.
+- **À retenir** : Avant `react-window`/`tanstack-virtual`, **épuiser les leviers natifs** (`content-visibility: auto`, `decoding="async"`, `React.memo` sur props stables). Ils règlent l'essentiel du jank sans dépendance ni complexité. Tailwind 4 accepte les classes arbitraires de CSS containment (`[content-visibility:auto]`) sans config supplémentaire.
+
 ### ⚡ Performance, Unification & App Shell (Phase 19)
 - **Optimisation Recherche** : Passage d'un scan séquentiel (O(n)) à un scan par index (O(log n)) via l'extension **Trigramme (`pg_trgm`)** de PostgreSQL.
 - **Unification SQL** : Suppression de la colonne `ingredients_json` (JSONB) au profit d'une source de vérité unique normalisée dans la table `RecipeIngredient`. Le backend reconstruit dynamiquement le JSON pour le frontend si nécessaire.

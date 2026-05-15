@@ -12,7 +12,7 @@ interface RecipeCardProps {
   onToggleFav?: (id: string) => void;
 }
 
-export const RecipeCard: React.FC<RecipeCardProps> = ({ recipe, isFav, onToggleFav }) => {
+const RecipeCardComponent: React.FC<RecipeCardProps> = ({ recipe, isFav, onToggleFav }) => {
   const navigate = useNavigate();
   const { searchQuery } = useSearchStore();
   const folder = recipe.folder_name || `${recipe.slug}_${recipe.id}`;
@@ -24,7 +24,7 @@ export const RecipeCard: React.FC<RecipeCardProps> = ({ recipe, isFav, onToggleF
   };
 
   return (
-    <div className="bg-white rounded-2xl shadow-sm border border-orange-100 overflow-hidden hover:shadow-md transition-shadow cursor-pointer relative">
+    <div className="bg-white rounded-2xl shadow-sm border border-orange-100 overflow-hidden hover:shadow-md transition-shadow cursor-pointer relative [content-visibility:auto] [contain-intrinsic-size:280px]">
       {onToggleFav && (
         <button
           onClick={(e) => { e.stopPropagation(); onToggleFav(recipe.id); }}
@@ -70,3 +70,5 @@ export const RecipeCard: React.FC<RecipeCardProps> = ({ recipe, isFav, onToggleF
     </div>
   );
 };
+
+export const RecipeCard = React.memo(RecipeCardComponent);

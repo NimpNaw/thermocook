@@ -31,6 +31,7 @@ export const RecipeImage: React.FC<RecipeImageProps> = ({
         src={src}
         alt={alt}
         loading="lazy"
+        decoding="async"
         className="w-full h-full object-cover transition-opacity duration-200"
         style={{ opacity: loaded && !error ? 1 : 0 }}
         onLoad={() => setLoaded(true)}
