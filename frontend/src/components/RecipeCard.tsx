@@ -28,7 +28,7 @@ const RecipeCardComponent: React.FC<RecipeCardProps> = ({ recipe, isFav, onToggl
       {onToggleFav && (
         <button
           onClick={(e) => { e.stopPropagation(); onToggleFav(recipe.id); }}
-          className={`absolute top-2 left-2 z-10 p-2 rounded-full backdrop-blur-md transition-colors ${isFav ? 'bg-orange-500 text-white' : 'bg-white/80 text-gray-400'}`}
+          className={`absolute top-2 left-2 z-10 p-2 rounded-full transition-colors ${isFav ? 'bg-orange-500 text-white' : 'bg-white text-gray-400'}`}
         >
           <Heart size={16} fill={isFav ? 'currentColor' : 'none'} strokeWidth={2.5} />
         </button>

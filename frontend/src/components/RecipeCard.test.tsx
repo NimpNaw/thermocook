@@ -100,7 +100,7 @@ describe('RecipeCard', () => {
   it('affiche le bouton favori inactif (gris) quand isFav est false', () => {
     render(<RecipeCard recipe={baseRecipe} isFav={false} onToggleFav={() => {}} />);
     const btn = screen.getByRole('button');
-    expect(btn.className).toContain('bg-white/80');
+    expect(btn.className).toContain('bg-white');
     expect(btn.className).not.toContain('bg-orange-500');
   });
 });

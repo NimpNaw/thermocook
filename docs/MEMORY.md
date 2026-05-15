@@ -72,12 +72,15 @@ Ce document conserve les décisions techniques complexes, les pièges évités e
 - **À retenir** : Quand une optimisation perf introduit une **liste de colonnes explicites** parallèle au schéma de réponse, le couplage devient fragile : un champ peut être déclaré côté schéma mais oublié côté SQL (ou inversement), et l'API renvoie alors `null` silencieusement même si la donnée existe en base. **Toujours** garder un test d'invariant qui lie les deux. Les mocks de `session.exec(...).all()` qui renvoient des objets `Recipe` complets ne suffisent pas — ils masquent ce genre d'oubli.
 
 ### 🌊 Fluidité du scroll catalogue (mobile Chrome)
-- **Problème** : Saccades brèves perçues lors du scroll de `/recipes` sur Android Chrome, surtout au moment où les thumbs entrent en lazy-load. La grille pousse 200+ cartes en DOM, toutes peintes en permanence et re-rendues à chaque fetch.
-- **Solution** : Trois leviers natifs minimaux (5 lignes au total) :
+- **Problème** : Saccades brèves perçues lors du scroll de `/recipes` sur Android Chrome, surtout au moment où les thumbs entrent en lazy-load. La grille pousse 200+ cartes en DOM, toutes peintes en permanence et re-rendues à chaque fetch. **Symptôme secondaire** : le scroll est nettement plus fluide en mode déconnecté qu'en mode connecté.
+- **Solution** : Trois leviers natifs minimaux + un fix ciblé sur le différentiel connecté/déconnecté :
     1. `decoding="async"` sur les `<img>` (`RecipeImage.tsx`) — décodage hors main thread.
     2. `[content-visibility:auto] [contain-intrinsic-size:280px]` sur le wrapper de `RecipeCard` — le navigateur skip le paint/layout des cartes hors viewport.
     3. `React.memo(RecipeCard)` — props stables (objet `recipe` par référence depuis le cache TQ, callbacks `useCallback` côté `App.tsx`) ⇒ comparaison shallow suffit.
-- **À retenir** : Avant `react-window`/`tanstack-virtual`, **épuiser les leviers natifs** (`content-visibility: auto`, `decoding="async"`, `React.memo` sur props stables). Ils règlent l'essentiel du jank sans dépendance ni complexité. Tailwind 4 accepte les classes arbitraires de CSS containment (`[content-visibility:auto]`) sans config supplémentaire.
+    4. **Suppression du `backdrop-blur-md` sur le bouton favori** (ligne 31 de `RecipeCard.tsx`) — passage de `bg-white/80 backdrop-blur-md` à `bg-white` opaque. Le bouton n'apparaît qu'en mode connecté ; ses 200+ instances forçaient autant de compositing layers + un pass de flou en temps réel à chaque frame, doublant le coût GPU par rapport au mode déconnecté.
+- **À retenir** :
+    1. Avant `react-window`/`tanstack-virtual`, **épuiser les leviers natifs** (`content-visibility: auto`, `decoding="async"`, `React.memo` sur props stables). Ils règlent l'essentiel du jank sans dépendance ni complexité. Tailwind 4 accepte les classes arbitraires de CSS containment (`[content-visibility:auto]`) sans config supplémentaire.
+    2. **`backdrop-blur` est très coûteux sur mobile** (compositing layer + filtre GPU temps réel par élément). À bannir des éléments répétés en grille. Si le fond est opaque (`bg-white` sans `/`), le blur ne fait visuellement rien : autant le supprimer. Le différentiel de fluidité connecté ↔ déconnecté est un signal qu'un élément conditionnel coûteux est en cause.
 
 ### ⚡ Performance, Unification & App Shell (Phase 19)
 - **Optimisation Recherche** : Passage d'un scan séquentiel (O(n)) à un scan par index (O(log n)) via l'extension **Trigramme (`pg_trgm`)** de PostgreSQL.
