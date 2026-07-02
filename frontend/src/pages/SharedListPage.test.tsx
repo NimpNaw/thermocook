@@ -88,3 +88,35 @@ describe('SharedListPage — fetch déclenché avec le token', () => {
     });
   });
 });
+
+describe('SharedListPage — caches locaux corrompus', () => {
+  it("hors-ligne avec cache de données corrompu : message d'erreur, pas de crash", async () => {
+    localStorage.setItem('tc_shared_list_abc-123', '{"categories": {corrompu');
+    fetchMock.mockRejectedValue(new Error('réseau coupé'));
+
+    renderAt('/shared/abc-123');
+
+    await waitFor(() => {
+      expect(showToast).toHaveBeenCalledWith(expect.stringMatching(/impossible de charger/i));
+    });
+    expect(await screen.findByText(/vide ou n'existe plus/i)).toBeInTheDocument();
+  });
+
+  it('cache des coches corrompu : la liste se charge quand même', async () => {
+    localStorage.setItem('tc_shared_checked_abc-123', '{corrompu');
+    fetchMock.mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        categories: { 'Épicerie': [{ text: '1 kg sucre', recipe: 'Brioche', recipe_id: 'r1', raw: '1 kg sucre' }] },
+        recipes: [{ id: 'r1', title: 'Brioche' }],
+        owner: 'alice',
+        expires_at: '2099-01-01T00:00:00Z',
+      }),
+    });
+
+    renderAt('/shared/abc-123');
+
+    expect(await screen.findByText(/1 kg sucre/)).toBeInTheDocument();
+  });
+});

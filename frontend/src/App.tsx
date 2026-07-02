@@ -14,7 +14,7 @@ import type { Recipe } from './api';
 import { useAuth } from './hooks/useAuth';
 import { useToast } from './hooks/useToast';
 import { ToastProvider } from './context/ToastContext';
-import { useSearchRecipesInfiniteQuery } from './hooks/queries/useRecipeQueries';
+import { useSearchRecipesInfiniteQuery, invalidateAllRecipeQueries, recipeKeys } from './hooks/queries/useRecipeQueries';
 import { useSearchStore } from './store/useSearchStore';
 import { useIntersectionObserver } from './hooks/useIntersectionObserver';
 import { useDebounce } from './hooks/useDebounce';
@@ -97,7 +97,7 @@ export const App: React.FC = () => {
   const { favorites, isFavorite, toggleFavorite: _toggleFavorite, syncToServer } = useFavorites();
 
   const handleCacheInvalidate = useCallback(() => {
-    queryClient.invalidateQueries({ queryKey: ['recipes', 'list'] });
+    invalidateAllRecipeQueries(queryClient);
   }, [queryClient]);
 
   const toggleFavorite = useCallback((id: string) => {
@@ -105,12 +105,12 @@ export const App: React.FC = () => {
     if (!added) {
       // Suppression : mise à jour optimiste du cache TQ pour affichage immédiat
       queryClient.setQueryData<Recipe[]>(
-        ['recipes', 'favorites'],
+        recipeKeys.favorites(),
         (old) => old?.filter(r => r.id !== id) ?? []
       );
     } else {
       // Ajout : invalider le cache pour déclencher un refetch au prochain montage
-      queryClient.invalidateQueries({ queryKey: ['recipes', 'favorites'] });
+      queryClient.invalidateQueries({ queryKey: recipeKeys.favorites() });
     }
   }, [_toggleFavorite, queryClient]);
   const { user, loading: authLoading, refreshUser, logout } = useAuth();

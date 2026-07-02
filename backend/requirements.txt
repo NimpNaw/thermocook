@@ -14,4 +14,5 @@ requests
 alembic
 Pillow
 pytest
+pytest-cov
 httpx

@@ -40,10 +40,18 @@ export const SharedListPage: React.FC = () => {
       localStorage.setItem(cacheKeyData, JSON.stringify(data));
       setOffline(false);
     } catch (err) {
-      // Tentative de chargement depuis le cache uniquement pour les erreurs réseau
-      const cached = localStorage.getItem(cacheKeyData);
-      if (cached) {
-        const data = JSON.parse(cached);
+      // Tentative de chargement depuis le cache uniquement pour les erreurs réseau.
+      // Un cache corrompu doit être traité comme un cache absent : ce JSON.parse
+      // s'exécute déjà dans un catch, une exception ici ne serait interceptée
+      // par personne.
+      let data: any = null;
+      try {
+        const cached = localStorage.getItem(cacheKeyData);
+        data = cached ? JSON.parse(cached) : null;
+      } catch {
+        localStorage.removeItem(cacheKeyData);
+      }
+      if (data && typeof data === 'object' && data.categories) {
         // Vérification de l'expiration locale
         if (data.expires_at && new Date() > new Date(data.expires_at)) {
           showToast('Ce lien a expiré');
@@ -64,9 +72,13 @@ export const SharedListPage: React.FC = () => {
 
   useEffect(() => {
     loadList();
-    // Charger les coches locales
-    const savedChecked = localStorage.getItem(cacheKeyChecked);
-    if (savedChecked) setChecked(JSON.parse(savedChecked));
+    // Charger les coches locales — un cache corrompu est simplement ignoré
+    try {
+      const savedChecked = localStorage.getItem(cacheKeyChecked);
+      if (savedChecked) setChecked(JSON.parse(savedChecked));
+    } catch {
+      localStorage.removeItem(cacheKeyChecked);
+    }
   }, [loadList, cacheKeyChecked]);
 
   const toggleCheck = (id: string) => {

@@ -83,9 +83,19 @@ def get_session():
         yield session
 
 def purge_db():
-    from app.models import Recipe, IngredientRef, UserFavorite, MealPlan, RecipeIngredient
+    from app.models import (
+        Recipe,
+        IngredientRef,
+        UserFavorite,
+        UserRecipeNote,
+        MealPlan,
+        RecipeIngredient,
+        ShoppingListExclusion,
+    )
     from sqlalchemy import delete
     with Session(engine) as session:
+        session.exec(delete(ShoppingListExclusion))
+        session.exec(delete(UserRecipeNote))
         session.exec(delete(MealPlan))
         session.exec(delete(UserFavorite))
         session.exec(delete(RecipeIngredient))

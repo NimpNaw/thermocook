@@ -6,8 +6,16 @@ const SYNC_RETRY_DELAYS = [2000, 5000, 10000];
 
 export const useFavorites = () => {
   const [favorites, setFavorites] = useState<string[]>(() => {
-    const saved = localStorage.getItem('thermocook_favorites');
-    return saved ? JSON.parse(saved) : [];
+    // Initializer exécuté pendant le rendu, à la racine de l'app : un JSON
+    // corrompu ne doit pas partir dans l'ErrorBoundary global — on repart
+    // simplement sur une liste vide.
+    try {
+      const saved = localStorage.getItem('thermocook_favorites');
+      const parsed = saved ? JSON.parse(saved) : [];
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
   });
 
   // Référence pour annuler les retries si le composant est démonté

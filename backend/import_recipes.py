@@ -58,33 +58,63 @@ def run_import(
     updated = 0
     processed = 0
     errors_list = []
+    # Compteurs du lot en attente de commit : basculés vers count/updated
+    # uniquement après un commit réussi, pour que le résumé final reflète
+    # exactement ce qui est persisté en base.
+    pending_new = 0
+    pending_updated = 0
 
     with Session(engine) as session:
         for md_file in md_files:
             recipe_folder = md_file.parent
             processed += 1
             try:
-                recipe_data = parse_recipe_markdown(md_file)
+                recipe_data = None
+                is_new = False
+                # Savepoint par recette : un échec n'annule que la recette en cours,
+                # jamais les recettes du lot en attente de commit (commit tous les 50).
+                with session.begin_nested():
+                    recipe_data = parse_recipe_markdown(md_file)
+                    if recipe_data:
+                        # folder_name est déjà renseigné avec le chemin relatif par le parser
+                        existing = session.get(Recipe, recipe_data.id)
+                        if existing:
+                            # Vérification de conflit de dossier pour un même ID
+                            if existing.folder_name != recipe_data.folder_name:
+                                raise ValueError(f"Conflit d'ID {recipe_data.id} : utilisé par {existing.folder_name} et {recipe_data.folder_name}")
+
+                            for key, value in recipe_data.model_dump(exclude={"id", "created_at"}).items():
+                                setattr(existing, key, value)
+                        else:
+                            session.add(recipe_data)
+                            is_new = True
+
+                        session.exec(delete(RecipeIngredient).where(RecipeIngredient.recipe_id == recipe_data.id))
+                        process_recipe_ingredients(session, recipe_data)
+
                 if recipe_data:
-                    # folder_name est déjà renseigné avec le chemin relatif par le parser
-                    existing = session.get(Recipe, recipe_data.id)
-                    if existing:
-                        # Vérification de conflit de dossier pour un même ID
-                        if existing.folder_name != recipe_data.folder_name:
-                            raise ValueError(f"Conflit d'ID {recipe_data.id} : utilisé par {existing.folder_name} et {recipe_data.folder_name}")
-
-                        for key, value in recipe_data.model_dump(exclude={"id", "created_at"}).items():
-                            setattr(existing, key, value)
-                        updated += 1
+                    # Compteurs incrémentés hors savepoint : uniquement si la recette est acquise
+                    if is_new:
+                        pending_new += 1
                     else:
-                        session.add(recipe_data)
-                        count += 1
-
-                    session.exec(delete(RecipeIngredient).where(RecipeIngredient.recipe_id == recipe_data.id))
-                    process_recipe_ingredients(session, recipe_data)
+                        pending_updated += 1
 
                     if processed % 50 == 0:
-                        session.commit()
+                        # Échec du commit géré localement : le lot est perdu, les
+                        # compteurs ne doivent pas l'annoncer comme importé et
+                        # l'erreur est attribuée au lot, pas à la recette courante.
+                        try:
+                            session.commit()
+                            count += pending_new
+                            updated += pending_updated
+                        except Exception as commit_err:
+                            session.rollback()
+                            lost = pending_new + pending_updated
+                            error_msg = f"échec du commit du lot : {lost} recette(s) perdue(s) : {commit_err}"
+                            _log(log_fn, f"⚠️ {error_msg}")
+                            errors_list.append(error_msg)
+                        finally:
+                            pending_new = pending_updated = 0
 
                     if progress_callback:
                         progress_callback(processed, total, recipe_folder.name, len(errors_list))
@@ -93,14 +123,28 @@ def run_import(
                         log_fn(f"Progression : {processed} / {total} — {recipe_folder.name}")
 
             except Exception as e:
-                session.rollback()
+                # Le savepoint a déjà annulé la recette en échec ; ne PAS rollback la
+                # session entière (cela effacerait le lot non committé). Filet de
+                # sécurité : une session invalidée impose un rollback pour continuer.
+                if not session.is_active:
+                    session.rollback()
+                    pending_new = pending_updated = 0
                 error_msg = f"{recipe_folder.relative_to(recipes_dir)} : {e}"
                 _log(log_fn, f"⚠️ {error_msg}")
                 errors_list.append(error_msg)
                 if progress_callback:
                     progress_callback(processed, total, recipe_folder.name, len(errors_list))
 
-        session.commit()
+        try:
+            session.commit()
+            count += pending_new
+            updated += pending_updated
+        except Exception as commit_err:
+            session.rollback()
+            lost = pending_new + pending_updated
+            error_msg = f"échec du commit du lot final : {lost} recette(s) perdue(s) : {commit_err}"
+            _log(log_fn, f"⚠️ {error_msg}")
+            errors_list.append(error_msg)
 
     if progress_callback:
         progress_callback(processed, total, "Terminé", len(errors_list))
@@ -153,6 +197,10 @@ def run_sync(
     error_details = []
     added = updated = deleted = errors = 0
     processed = 0
+    # Compteurs du lot en attente de commit (cf. run_import) : basculés vers
+    # added/updated uniquement après un commit réussi.
+    pending_added = 0
+    pending_updated = 0
 
     with Session(engine) as session:
         # Phase 1 : Ajout / mise à jour
@@ -176,29 +224,53 @@ def run_sync(
                 pass
 
             try:
-                recipe_data = parse_recipe_markdown(md_file)
+                recipe_data = None
+                is_new = False
+                # Savepoint par recette : un échec n'annule que la recette en cours,
+                # jamais les recettes du lot en attente de commit (commit tous les 50).
+                with session.begin_nested():
+                    recipe_data = parse_recipe_markdown(md_file)
+                    if recipe_data:
+                        disk_ids[recipe_data.id] = recipe_folder  # Double vérification de l'ID extrait
+
+                        existing = session.get(Recipe, recipe_data.id)
+                        if existing:
+                            if existing.folder_name != recipe_data.folder_name:
+                                raise ValueError(f"Conflit ID {recipe_data.id} : DB={existing.folder_name}, Disque={recipe_data.folder_name}")
+
+                            for key, value in recipe_data.model_dump(exclude={"id", "created_at"}).items():
+                                setattr(existing, key, value)
+                        else:
+                            session.add(recipe_data)
+                            is_new = True
+
+                        session.exec(delete(RecipeIngredient).where(RecipeIngredient.recipe_id == recipe_data.id))
+                        process_recipe_ingredients(session, recipe_data)
+
                 if not recipe_data:
                     continue
 
-                disk_ids[recipe_data.id] = recipe_folder  # Double vérification de l'ID extrait
-
-                existing = session.get(Recipe, recipe_data.id)
-                if existing:
-                    if existing.folder_name != recipe_data.folder_name:
-                        raise ValueError(f"Conflit ID {recipe_data.id} : DB={existing.folder_name}, Disque={recipe_data.folder_name}")
-
-                    for key, value in recipe_data.model_dump(exclude={"id", "created_at"}).items():
-                        setattr(existing, key, value)
-                    updated += 1
+                # Compteurs incrémentés hors savepoint : uniquement si la recette est acquise
+                if is_new:
+                    pending_added += 1
                 else:
-                    session.add(recipe_data)
-                    added += 1
-
-                session.exec(delete(RecipeIngredient).where(RecipeIngredient.recipe_id == recipe_data.id))
-                process_recipe_ingredients(session, recipe_data)
+                    pending_updated += 1
 
                 if processed % 50 == 0:
-                    session.commit()
+                    # Échec du commit géré localement (cf. run_import) : compteurs honnêtes
+                    try:
+                        session.commit()
+                        added += pending_added
+                        updated += pending_updated
+                    except Exception as commit_err:
+                        session.rollback()
+                        lost = pending_added + pending_updated
+                        err_msg = f"échec du commit du lot : {lost} recette(s) perdue(s) : {commit_err}"
+                        _log(log_fn, f"⚠️ {err_msg}")
+                        error_details.append(err_msg)
+                        errors += 1
+                    finally:
+                        pending_added = pending_updated = 0
 
                 # Feedback à chaque recette (commit reste tous les 50)
                 if progress_callback:
@@ -208,7 +280,12 @@ def run_sync(
                     log_fn(f"Progression : {processed} / {total} — {recipe_folder.name}")
 
             except Exception as e:
-                session.rollback()
+                # Le savepoint a déjà annulé la recette en échec ; ne PAS rollback la
+                # session entière (cela effacerait le lot non committé). Filet de
+                # sécurité : une session invalidée impose un rollback pour continuer.
+                if not session.is_active:
+                    session.rollback()
+                    pending_added = pending_updated = 0
                 errors += 1
                 err_msg = f"{md_file.parent.relative_to(recipes_dir)} : {str(e)}"
                 error_details.append(err_msg)
@@ -240,7 +317,11 @@ def run_sync(
                                 shutil.rmtree(thumb_dir, ignore_errors=True)
                 deleted += 1
 
+        # Commit final de la phase 1 (reliquat de lot) + phase 2
         session.commit()
+        added += pending_added
+        updated += pending_updated
+        pending_added = pending_updated = 0
 
         # Phase 3 : Nettoyage des IngredientRef orphelins (sans RecipeIngredient associée)
         session.execute(text("""

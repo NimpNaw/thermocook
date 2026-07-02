@@ -1,14 +1,20 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { X, ChevronLeft, ChevronRight, CheckCircle2, Timer as TimerIcon, Play, Pause, RotateCcw } from 'lucide-react';
-import { api, Recipe } from '../api';
+import { X, ChevronLeft, ChevronRight, CheckCircle2, Timer as TimerIcon, Play, Pause, RotateCcw, WifiOff } from 'lucide-react';
 import { FormattedText } from './FormattedText';
+import { useRecipeQuery } from '../hooks/queries/useRecipeQueries';
+
+// Asset local (précaché par le service worker via includeAssets) : un son
+// hébergé sur un CDN externe serait silencieux hors-ligne.
+const TIMER_END_SOUND = '/sounds/timer-end.wav';
 
 export const CookingMode: React.FC = () => {
   const { id } = useParams<{ id: string }>();
-  const [recipe, setRecipe] = useState<Recipe | null>(null);
+  // useRecipeQuery réutilise le cache TanStack Query : la recette vient d'être
+  // affichée sur la fiche détail, le Mode Cuisine démarre donc instantanément
+  // même hors-ligne, et les échecs réseau sont gérés (pas d'écran blanc).
+  const { data: recipe, isLoading, isError, refetch } = useRecipeQuery(id);
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
-  const [loading, setLoading] = useState(true);
   
   // Timer State
   const [timerSeconds, setTimerSeconds] = useState<number | null>(null);
@@ -18,31 +24,34 @@ export const CookingMode: React.FC = () => {
 
   const navigate = useNavigate();
 
+  // Décompte du minuteur
   useEffect(() => {
-    let interval: ReturnType<typeof setInterval> | null = null;
-    let advanceTimeout: ReturnType<typeof setTimeout> | null = null;
-    if (isTimerRunning && timerSeconds && timerSeconds > 0) {
-      interval = setInterval(() => {
-        setTimerSeconds(prev => (prev && prev > 0 ? prev - 1 : 0));
-      }, 1000);
-    } else if (timerSeconds === 0) {
-      setIsTimerRunning(false);
-      if ('vibrate' in navigator) navigator.vibrate([500, 200, 500]);
-      const audio = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3');
-      audio.play().catch(() => {});
-      // Passage automatique à l'étape suivante après un court délai.
-      // Le timeout doit être nettoyé si l'utilisateur quitte ou clique manuellement
-      // sur Suivant entre-temps, sinon on avance d'une étape de trop.
-      advanceTimeout = setTimeout(() => {
-        setTimerSeconds(null);
-        setCurrentStepIndex(prev => Math.min(prev + 1, stepsLengthRef.current - 1));
-      }, 1500);
-    }
-    return () => {
-      if (interval) clearInterval(interval);
-      if (advanceTimeout) clearTimeout(advanceTimeout);
-    };
+    if (!isTimerRunning || !timerSeconds || timerSeconds <= 0) return;
+    const interval = setInterval(() => {
+      setTimerSeconds(prev => (prev && prev > 0 ? prev - 1 : 0));
+    }, 1000);
+    return () => clearInterval(interval);
   }, [isTimerRunning, timerSeconds]);
+
+  // Fin du minuteur : effet séparé, dépendant UNIQUEMENT de timerSeconds.
+  // Dans l'ancien effet unique, le setIsTimerRunning(false) de la branche
+  // « fin » redéclenchait l'effet (isTimerRunning en dépendance) : vibration
+  // et sonnerie partaient deux fois.
+  useEffect(() => {
+    if (timerSeconds !== 0) return;
+    setIsTimerRunning(false);
+    if ('vibrate' in navigator) navigator.vibrate([500, 200, 500]);
+    const audio = new Audio(TIMER_END_SOUND);
+    audio.play().catch(() => {});
+    // Passage automatique à l'étape suivante après un court délai.
+    // Le timeout doit être nettoyé si l'utilisateur quitte ou clique manuellement
+    // sur Suivant entre-temps, sinon on avance d'une étape de trop.
+    const advanceTimeout = setTimeout(() => {
+      setTimerSeconds(null);
+      setCurrentStepIndex(prev => Math.min(prev + 1, stepsLengthRef.current - 1));
+    }, 1500);
+    return () => clearTimeout(advanceTimeout);
+  }, [timerSeconds]);
 
   const startTimer = (secs: number) => {
     setInitialTimerSeconds(secs);
@@ -58,28 +67,76 @@ export const CookingMode: React.FC = () => {
 
   useEffect(() => {
     let wakeLock: any = null;
+    let cancelled = false;
     const requestWakeLock = async () => {
       try {
         if ('wakeLock' in navigator) {
-          wakeLock = await (navigator as any).wakeLock.request('screen');
+          const lock = await (navigator as any).wakeLock.request('screen');
+          // Si le composant a été démonté pendant la requête en vol, relâcher
+          // immédiatement le verrou obtenu (sinon l'écran reste éveillé).
+          if (cancelled) {
+            lock.release();
+            return;
+          }
+          wakeLock = lock;
         }
       } catch (err) {
         console.warn("Wake Lock non supporté.");
       }
     };
+    // Le navigateur relâche automatiquement le verrou quand l'app passe en
+    // arrière-plan (appel, verrouillage manuel, changement d'app) et ne le
+    // réacquiert PAS tout seul : sans ce listener, l'écran se reverrouille
+    // pour le reste de la session de cuisine.
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') requestWakeLock();
+    };
     requestWakeLock();
+    document.addEventListener('visibilitychange', onVisibilityChange);
     return () => {
+      cancelled = true;
+      document.removeEventListener('visibilitychange', onVisibilityChange);
       if (wakeLock) wakeLock.release();
     };
   }, []);
 
-  useEffect(() => {
-    if (id) {
-      api.getRecipe(id).then(setRecipe).finally(() => setLoading(false));
-    }
-  }, [id]);
+  if (isLoading) {
+    return (
+      <div className="fixed inset-0 bg-white z-[100] flex items-center justify-center">
+        <div role="status" aria-label="Chargement" className="flex items-center gap-2 text-[#006d5b] animate-pulse">
+          <div className="w-2 h-2 bg-[#006d5b] rounded-full animate-bounce" style={{ animationDelay: '0s' }}></div>
+          <div className="w-2 h-2 bg-[#006d5b] rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
+          <div className="w-2 h-2 bg-[#006d5b] rounded-full animate-bounce" style={{ animationDelay: '0.4s' }}></div>
+        </div>
+      </div>
+    );
+  }
 
-  if (loading || !recipe) return null;
+  if (isError || !recipe) {
+    return (
+      <div className="fixed inset-0 bg-white z-[100] flex flex-col items-center justify-center gap-6 p-8 text-center">
+        <WifiOff size={48} className="text-gray-300" />
+        <div>
+          <p className="text-lg font-bold text-gray-900">Impossible de charger la recette</p>
+          <p className="text-sm text-gray-500 mt-1">Vérifiez votre connexion puis réessayez.</p>
+        </div>
+        <div className="flex gap-3">
+          <button
+            onClick={() => navigate(-1)}
+            className="px-8 py-4 bg-white border border-gray-200 text-gray-600 rounded-2xl font-black shadow-sm active:scale-95 transition-all"
+          >
+            Retour
+          </button>
+          <button
+            onClick={() => refetch()}
+            className="px-8 py-4 bg-[#006d5b] text-white rounded-2xl font-black shadow-lg active:scale-95 transition-all"
+          >
+            Réessayer
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   const steps = recipe.steps_json?.filter(s => !s.text.trim().startsWith('###')) || [];
   stepsLengthRef.current = steps.length;

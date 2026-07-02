@@ -2,7 +2,12 @@ from datetime import datetime, timezone
 from typing import Optional, List, Dict
 from sqlmodel import SQLModel, Field, Relationship
 from sqlalchemy.dialects.postgresql import JSONB, TSVECTOR
-from sqlalchemy import Column, UniqueConstraint
+from sqlalchemy import JSON, Column, Text, UniqueConstraint
+
+# Variants SQLite : permettent de créer le schéma sur SQLite (tests d'intégration
+# avec contraintes FK réelles) sans changer le DDL PostgreSQL de production.
+_JSONB = JSONB().with_variant(JSON(), "sqlite")
+_TSVECTOR = TSVECTOR().with_variant(Text(), "sqlite")
 
 class ImportLog(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
@@ -94,8 +99,8 @@ class Recipe(SQLModel, table=True):
 
     # Contenu riche
     content_md: str # Source de vérité pour l édition
-    steps_json: List[Dict] = Field(default=[], sa_column=Column(JSONB))
-    nutrition_json: Optional[Dict] = Field(default=None, sa_column=Column(JSONB))
+    steps_json: List[Dict] = Field(default=[], sa_column=Column(_JSONB))
+    nutrition_json: Optional[Dict] = Field(default=None, sa_column=Column(_JSONB))
 
     # Métadonnées plateforme
     is_public: bool = Field(default=True)
@@ -118,5 +123,5 @@ class Recipe(SQLModel, table=True):
     # Vecteur FTS précalculé — peuplé à l'import, indexé via GIN (idx_recipe_search_vector)
     search_vector: Optional[str] = Field(
         default=None,
-        sa_column=Column(TSVECTOR, nullable=True)
+        sa_column=Column(_TSVECTOR, nullable=True)
     )

@@ -89,6 +89,26 @@ Ce document conserve les décisions techniques complexes, les pièges évités e
 - **Architecture App Shell** : Résolution définitive des problèmes de barre de navigation mouvante sur mobile en verrouillant le défilement du navigateur (`overflow: hidden`) et en implémentant un scroll interne (`100dvh`).
 - **À retenir** : Pour une application mobile-first, le contrôle total du scroll du viewport est indispensable. La normalisation SQL est plus performante que le JSONB pour les calculs d'agrégation massifs (liste de courses).
 
+### 🧪 Mocks vs contraintes FK réelles & savepoints d'import (Phase 24)
+- **Problème** : Deux bugs de production invisibles pour la suite de tests.
+    1. `POST /admin/clear-recipes` supprimait `Recipe` sans purger `RecipeIngredient` (FK sans `ON DELETE CASCADE`) → `IntegrityError`/500 dès qu'une recette avait des ingrédients. Les tests existants mockaient la session (`MagicMock`) et validaient donc un ordre de suppression impossible en réalité.
+    2. `run_import`/`run_sync` committent tous les 50 enregistrements ; sur exception, `session.rollback()` annulait **tout le lot en cours** : jusqu'à 49 recettes déjà comptées « importées » n'étaient jamais persistées, avec un résumé final mensonger.
+- **Solution** :
+    1. Fixture `fk_engine` (`backend/tests/conftest.py`) : SQLite en mémoire avec `PRAGMA foreign_keys=ON` + variants SQLite sur les colonnes Postgres-spécifiques (`JSONB`/`TSVECTOR` → `with_variant`, DDL Postgres inchangé). Les tests d'intégration exercent ainsi de vraies contraintes FK.
+    2. Purge de `RecipeIngredient` avant `Recipe` (+ `IngredientRef` orphelins), même ordre que `purge_db()`.
+    3. Savepoint par recette (`session.begin_nested()`) dans les boucles d'import : l'échec d'une recette n'annule qu'elle-même. Les compteurs du résumé passent par des compteurs de lot (`pending_*`) basculés vers les totaux **uniquement après un commit réussi** ; un échec du commit périodique est attribué au lot (« N recette(s) perdue(s) »), pas à la recette courante. Filet de sécurité `not session.is_active` → rollback pour garder la session utilisable.
+- **À retenir** : Un test qui mocke la session DB ne teste **pas** l'ordre des suppressions ni les contraintes FK — pour tout endpoint qui écrit en cascade, exiger un test d'intégration sur vraie base. Et dans une boucle batch avec commits périodiques, jamais de `session.rollback()` brut dans le `except` : c'est un effaceur de lot ; utiliser un savepoint par élément.
+
+### ⚙️ deploy-dev écrase le répertoire de travail (Phase 24)
+- **Problème** : Le job CI `deploy-dev` fait `git checkout main && git reset --hard origin/main` dans `/home/fabien/thermocook`, qui est à la fois le checkout de développement et la racine des montages de l'instance dev (`./backend`, `./data`). Vécu en session : un merge sur `main` a déclenché la CI, et le `reset --hard` a **détruit des modifications non commitées** et rebasculé la branche en plein travail.
+- **Solution** : Garde-fou dans `ci.yaml` — le déploiement est **annulé** (job en échec, message explicite) si `git status --porcelain` montre des modifications suivies non commitées. Les fichiers non suivis sont ignorés (le reset ne les touche pas).
+- **À retenir** : Quand un répertoire sert à la fois de working copy et de cible de déploiement, tout job CI destructif doit vérifier l'état du working tree avant d'agir. Pour travailler pendant qu'une CI peut se déclencher : committer tôt, ou utiliser un `git worktree` séparé.
+
+### 🧪 Piège fk_engine : transaction rouverte après le seed (Phase 24)
+- **Problème** : Avec `fk_engine` (StaticPool = **une seule connexion SQLite partagée** + `BEGIN` explicite via listener), un `session.refresh()` ou l'accès à un attribut expiré **après le dernier `commit()`** du seed rouvre une transaction sur la connexion partagée. La requête HTTP de test qui suit échoue alors en 500 : `cannot start a transaction within a transaction`.
+- **Solution** : Dans les helpers de seed, capturer les IDs nécessaires avant/juste après `refresh()`, puis refermer par un `commit()` final avant d'appeler le `TestClient`. Exemples commentés dans `backend/tests/test_notes_routes.py` et `test_admin_users.py`.
+- **À retenir** : Toute fixture d'intégration à connexion unique impose de terminer le seed sur une transaction fermée. Si un test fk_engine renvoie un 500 inattendu dès la première requête, chercher d'abord une transaction laissée ouverte par le seed.
+
 ---
 
 ## 📂 Décisions d'Architecture (Historique)

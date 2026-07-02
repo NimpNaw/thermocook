@@ -71,16 +71,22 @@ done
 ## 🔄 CI/CD
 
 
+**Déclencheurs** : push sur `main`/`master` **et pull requests**. Sur une PR, seuls les jobs de test s'exécutent (build/deploy sont réservés aux push sur `main`) — c'est ce qui garantit la règle « CI au vert avant merge » du cycle de vie.
+
 ### Versionnement de l'Application
 - **CI Gitea (interne)** : le pipeline utilise le tag `:latest` pour les images `backend` et `frontend` poussées sur le registre GHCR. Le déploiement automatique sur l'instance de développement (`deploy-dev`) écrase la version précédente avec le dernier build de `main`.
 - **Publication publique (GitHub + ghcr.io)** : les releases semver `vX.Y.Z` sont poussées manuellement via `./scripts/release-public.sh` (miroir `NimpNaw/thermocook` + images `ghcr.io/nimpnaw/thermocook-{backend,frontend}:vX.Y.Z`). Procédure complète : [`docs/RELEASE.md`](RELEASE.md).
 - **Note** : Ne pas confondre ces versionnements logiciels avec le **versionnement des recettes** (ex: `v1.0.0`), qui est géré comme un catalogue de données indépendant (voir [`docs/spec/RECIPE_PACKAGING.md`](spec/RECIPE_PACKAGING.md)).
 
 ### Jobs du Pipeline
-1.  **backend-test** : Exécute le linting (Ruff) et les tests unitaires (Pytest).
-2.  **frontend-test** : Exécute les tests Vitest.
-3.  **build-and-push** : Construit les images Docker et les pousse vers le registre GHCR (uniquement si les tests passent).
-4.  **deploy-dev** : Met à jour automatiquement l'environnement de développement sur le serveur.
+1.  **backend-test** : Linting (Ruff) + tests Pytest avec couverture (`--cov-fail-under=90`).
+2.  **frontend-test** : Tests Vitest avec couverture ; les seuils (`test.coverage.thresholds` dans `vite.config.ts` : 70 % statements/lines, 60 % branches) font échouer le job en cas de régression.
+3.  **scripts-test** : Tests shell `scripts/lib/test-scrub.sh` et `test-validate.sh`.
+4.  **e2e-tests** : Stack Docker isolée + Playwright.
+5.  **build-and-push** : Construit et pousse les images Docker (uniquement sur push `main`, si tous les tests passent).
+6.  **deploy-dev** : Met à jour l'instance de développement (uniquement sur push `main`).
+
+> ⚠️ **`deploy-dev` et le répertoire de travail** : l'instance dev tourne depuis `/home/fabien/thermocook` (montages `./backend` et `./data` du `docker-compose.dev.yml`). Le job fait `checkout main` + `reset --hard origin/main` dans ce répertoire ; un garde-fou **annule le déploiement** si des modifications non commitées y sont présentes (au lieu de les détruire). Conséquences pratiques : committer/pousser avant chaque merge, et éviter d'y laisser du travail en cours pendant qu'une CI tourne — utiliser un `git worktree` séparé pour les travaux longs.
 
 ### Déploiement Production
 Le déploiement en production est **intentionnellement manuel** pour garantir un contrôle total.

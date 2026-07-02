@@ -10,11 +10,12 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['favicon.ico', 'robots.txt', 'apple-touch-icon.png', 'favicon.svg', 'icons/*.png'],
+      includeAssets: ['favicon.ico', 'robots.txt', 'apple-touch-icon.png', 'favicon.svg', 'icons/*.png', 'sounds/*.wav'],
       manifest: {
         name: 'ThermoCook',
         short_name: 'ThermoCook',
         description: 'Ma cuisine Thermomix auto-hébergée',
+        lang: 'fr',
         theme_color: '#006d5b',
         background_color: '#ffffff',
         display: 'standalone',
@@ -57,7 +58,20 @@ export default defineConfig({
         'src/context/**/*.tsx',
         'src/components/**/*.tsx',
         'src/utils/**/*.ts',
+        'src/pages/**/*.tsx',
+        'src/store/**/*.ts',
+        'src/constants/**/*.ts',
+        'src/App.tsx',
       ],
+      // Seuils appliqués en CI (npm run test:coverage) : niveau actuel ~77 %
+      // stmts / 67 % branches — les seuils laissent une marge sans autoriser
+      // de grosse régression.
+      thresholds: {
+        statements: 70,
+        branches: 60,
+        functions: 60,
+        lines: 70,
+      },
     },
   },
 });

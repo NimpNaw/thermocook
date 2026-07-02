@@ -17,7 +17,7 @@ from sqlalchemy import case, delete
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.sql.expression import func as sa_func
 from app.database import init_db, get_session
-from app.models import Recipe, User, MealPlan, UserFavorite, UserRecipeNote, ImportLog, ShoppingListExclusion, SharedLink, RecipeIngredient
+from app.models import Recipe, User, MealPlan, UserFavorite, UserRecipeNote, ImportLog, ShoppingListExclusion, SharedLink, RecipeIngredient, IngredientRef
 from app.auth import get_password_hash, verify_password, create_access_token, get_current_user, get_current_admin, ACCESS_TOKEN_EXPIRE_MINUTES
 from app.schemas import UserCreate, UserResponse, NoteRequest, ShoppingListAddRequest, ShoppingListExcludeRequest, RecipePreview, RecipeRead, ChangePasswordRequest, RecipesBulkRequest
 from app.normalization import get_sql_grouped_shopping_list
@@ -986,7 +986,11 @@ def clear_recipes(
     session.exec(delete(UserFavorite))
     session.exec(delete(UserRecipeNote))
     session.exec(delete(MealPlan))
+    # RecipeIngredient référence recipe.id sans ON DELETE CASCADE : purge obligatoire
+    # avant Recipe, sinon IntegrityError (même ordre que purge_db).
+    session.exec(delete(RecipeIngredient))
     session.exec(delete(Recipe))
+    session.exec(delete(IngredientRef))
     session.commit()
 
     if THUMBS_DIR.exists():

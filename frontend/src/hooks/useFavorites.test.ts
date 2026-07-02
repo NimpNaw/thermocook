@@ -30,6 +30,20 @@ describe('useFavorites', () => {
     expect(result.current.favorites).toEqual(['r1', 'r2']);
   });
 
+  it('repart sur une liste vide si le localStorage est corrompu (pas de crash)', () => {
+    // Un JSON tronqué ne doit pas faire exploser toute l'app : useFavorites est
+    // monté à la racine (App.tsx), une exception ici part dans l'ErrorBoundary.
+    localStorage.setItem('thermocook_favorites', '["r1", "r2"');
+    const { result } = renderHook(() => useFavorites());
+    expect(result.current.favorites).toEqual([]);
+  });
+
+  it('ignore un contenu localStorage qui n\'est pas un tableau', () => {
+    localStorage.setItem('thermocook_favorites', '{"pas": "un tableau"}');
+    const { result } = renderHook(() => useFavorites());
+    expect(result.current.favorites).toEqual([]);
+  });
+
   it('toggleFavorite ajoute un favori absent et retourne true', () => {
     const { result } = renderHook(() => useFavorites());
     let added: boolean;
